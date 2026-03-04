@@ -1,0 +1,23 @@
+
+services:
+  # web:
+  #   build: .
+  #   ports:
+  #      - "5000:5050"
+  db:
+    image: ankane/pgvector:latest
+    ports:
+       - "5432:5432"
+    environment:
+      POSTGRES_PASSWORD: mysecretpassword
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  scraper:
+    image: mcr.microsoft.com/playwright/python:v1.40.0-jammy
+    volumes:
+    - .:/app
+    working_dir: /app
+    command: tail -f /dev/null
+volumes:
+  pgdata:
