@@ -11,7 +11,7 @@ ua = UserAgent()
 REFERER_LIST = ['https://www.google.com/', 'https://myanimelist.net/']
 
 async def random_human_delay():
-    delay = random.choice([1, 2, 3, 1.5, 2.5])
+    delay = random.choice([1, 2, 3, 1.5, 2.5,1.3,2.1,2.4])
     print(f"模式模擬：隨機延遲 {delay} 秒...")
     await asyncio.sleep(delay)
 
@@ -129,7 +129,7 @@ async def run_protected_scraper(base_url, folder_name,start_count_str, max_pages
                                 "href": href,
                                 "path": local_path
                             })
-                            await asyncio.sleep(random.uniform(0.5, 3.9))
+                            await asyncio.sleep(random.uniform(0.6, 1.2))
                         else:
                             print(f"發現漫畫：{title[:20]}... -  無圖片標籤")
                             results.append({
@@ -138,7 +138,7 @@ async def run_protected_scraper(base_url, folder_name,start_count_str, max_pages
                                 "path": "無圖片"
                             })               
                 if current_page < max_pages:
-                    safe_delay = random.uniform(8.0, 15.0)
+                    safe_delay = random.uniform(6.0, 10.0)
                     print(f"\n第 {current_page} 頁處理完畢。為了模擬人類行為，休息 {safe_delay:.1f} 秒...")
                     await asyncio.sleep(safe_delay)
                 print("\n" + "="*70)

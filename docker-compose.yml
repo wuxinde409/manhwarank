@@ -1,4 +1,4 @@
-
+version: '3.8' #為了跑gpu才加
 services:
   # web:
   #   build: .
@@ -19,5 +19,22 @@ services:
     - .:/app
     working_dir: /app
     command: tail -f /dev/null
+
+  ai_trainer:
+    image: pytorch/pytorch:2.1.0-cuda11.8-cudnn8-runtime
+    shm_size: '8gb'
+    volumes: #改外面程式裡面才能直接用
+    - .:/app
+    working_dir: /app #儲存位置
+    command: tail -f /dev/null #讓docker永遠開著
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+
 volumes:
   pgdata:
