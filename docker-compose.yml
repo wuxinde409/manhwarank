@@ -4,14 +4,6 @@ services:
   #   build: .
   #   ports:
   #      - "5000:5050"
-  db:
-    image: ankane/pgvector:latest
-    ports:
-       - "5432:5432"
-    environment:
-      POSTGRES_PASSWORD: mysecretpassword
-    volumes:
-      - pgdata:/var/lib/postgresql/data
 
   scraper:
     image: mcr.microsoft.com/playwright/python:v1.40.0-jammy
@@ -26,7 +18,11 @@ services:
     volumes: #改外面程式裡面才能直接用
     - .:/app
     working_dir: /app #儲存位置
-    command: tail -f /dev/null #讓docker永遠開著
+    command: >
+      /bin/bash -c "
+      pip install psycopg2-binary python-dotenv pandas pgvector && 
+      tail -f /dev/null
+      "       
     deploy:
       resources:
         reservations:
@@ -35,6 +31,18 @@ services:
               count: all
               capabilities: [gpu]
 
+  db:
+    image: pgvector/pgvector:pg16  # 直接使用編譯好 vector 的官方
+    container_name: manhwa_vector_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_ROOT_PASSWORD}   # 設定超級管理員密碼
+      POSTGRES_DB: manhwa          # 容器啟動時，會自動幫你建立 manhwa 資料庫
+    ports:
+      - "${DB_PORT_MAPPING}"                # 映射到外部，讓你的 pgAdmin 還是可以連進來
+    volumes:
+      - pgdata:/var/lib/postgresql/data
 
 volumes:
   pgdata:
