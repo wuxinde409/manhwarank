@@ -26,11 +26,12 @@ DB_PORT = 5432
 
 try:
     conn = psycopg2.connect(host=DB_HOST, database=DB_NAME, user=DB_USER, password=DB_PASS, port=DB_PORT)
-    # 註冊 pgvector 型別，讓 Python 陣列能無縫轉換為 SQL 向量
-    register_vector(conn)
+
+    # register_vector(conn)
     cursor = conn.cursor()
     
     cursor.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+    cursor.execute("DROP TABLE IF EXISTS anime_images;")
     create_table_sql = """
     CREATE TABLE IF NOT EXISTS anime_images (
         id SERIAL PRIMARY KEY,
@@ -38,7 +39,7 @@ try:
         image_path TEXT UNIQUE,
         labels JSONB,
         semantic_feature vector(512), 
-        style_feature vector(1536)
+        style_feature vector(448)
     );
     """
     cursor.execute(create_table_sql)
