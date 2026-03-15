@@ -57,10 +57,10 @@ unique_files_count = len(df)
 duplicate_count = total_physical_files - unique_files_count
 
 print("\n" + "="*40)
-print(f"📊 資料庫掃描報告：")
-print(f" - 掃描到的實體圖片總數: {total_physical_files}")
-print(f" - 實際獨立圖片總數 (去重後): {unique_files_count}")
-print(f" - 發現並成功合併的重複圖片: {duplicate_count} 張")
+print(f"資料庫掃描：")
+print(f"掃描到的實體圖片總數: {total_physical_files}")
+print(f"實際獨立圖片總數 (去重複後): {unique_files_count}")
+print(f"發現並成功合併的重複圖片: {duplicate_count} 張")
 print("="*40)
 
 # 將結果儲存成 CSV 檔案

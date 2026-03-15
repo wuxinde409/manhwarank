@@ -4,7 +4,29 @@ services:
   #   build: .
   #   ports:
   #      - "5000:5050"
-
+  api_server:
+      image: pytorch/pytorch:2.1.0-cuda11.8-cudnn8-runtime
+      container_name: manhwa_api_server
+      shm_size: '8gb'
+      ports:
+        - "8000:8000"  # 映射 8000 Port 讓外部的 React (localhost:5173) 可以呼叫
+      volumes:
+        - .:/app
+      working_dir: /app
+      depends_on:
+        - db           # 確保資料庫先啟動，API 伺服器才跟著啟動
+      command: >
+        /bin/bash -c "
+        pip install fastapi uvicorn python-multipart slowapi psycopg2-binary python-dotenv pgvector && 
+        uvicorn api:app --host 0.0.0.0 --port 8000 --reload
+        " 
+      deploy:
+        resources:
+          reservations:
+            devices:
+              - driver: nvidia
+                count: all
+                capabilities: [gpu]
   scraper:
     image: mcr.microsoft.com/playwright/python:v1.40.0-jammy
     volumes:
