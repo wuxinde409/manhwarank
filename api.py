@@ -6,7 +6,7 @@ import torch.nn as nn
 import torchvision.models as models
 import torchvision.transforms as transforms
 from PIL import Image
-from fastapi import FastAPI, UploadFile, File, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 import psycopg2
 from pgvector.psycopg2 import register_vector
@@ -91,17 +91,32 @@ transform = transforms.Compose([
 #api節點
 @app.post("/api/search_image")
 @limiter.limit("5/day")
-async def search_similar_manga(request: Request, file: UploadFile=File(...)):
+async def search_similar_manga(
+    request: Request, 
+    file: UploadFile=File(...),
+    focusContent: str = Form("false"),
+    focusStyle: str = Form("false")
+    ):
     if not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Invalid file type. Only images are allowed.")
+    is_content = focusContent.lower()== "true"
+    is_style = focusStyle.lower()== "true"
+    if is_content and not is_style:
+        w_sem, w_sty=1.0, 0.0
+    elif is_style and not is_content:
+        w_sem, w_sty=0.0, 1.0
+    else:
+        w_sem, w_sty=0.5, 0.5
+        
     try:
         image_bytes = await file.read()
         image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
         
         input_tensor = transform(image).unsqueeze(0).to(device)
         with torch.no_grad():
-            e_sem, e_sey= encoder(input_tensor)
-        sem_vector =e_sem[0].cpu().numpy().tolist()
+            e_sem, e_sty= encoder(input_tensor)
+        sem_vector =e_sem[0].cpu().numpy().tolist() #轉成python列表
+        sty_vector =e_sty[0].cpu().numpy().tolist()
         
         #資料庫
         conn=psycopg2.connect(host=DB_HOST,database=DB_NAME, user=DB_USER, password=DB_PASS, port=DB_PORT)
@@ -109,21 +124,25 @@ async def search_similar_manga(request: Request, file: UploadFile=File(...)):
         cursor=conn.cursor() #生成物件去控制database
         
         search_query = '''
-            SELECT manga_name, image_path, labels, (semantic_feature <=> %s) AS distance
+            SELECT manga_name, image_path, labels, (%s * (semantic_feature <=> %s) + %s * (style_feature <=> %s)) AS distance
             FROM anime_images
             WHERE (semantic_feature <=> %s) > 0.01
             ORDER BY distance ASC
             LIMIT 5;
         '''
         # cursor.execute(search_query,(str(sem_vector),))
-        cursor.execute(search_query, (str(sem_vector), str(sem_vector)))
+        cursor.execute(search_query, (
+            w_sem, str(sem_vector), 
+            w_sty, str(sty_vector),
+            str(sem_vector)
+        ))
         results=cursor.fetchall()
         formatted_results =[] #裝回傳資料用的
         for row in results :
             formatted_results.append({
                 "manga_name": row[0],
                 "image_path": row[1],
-                "similarity_score": round(1-float(row[3]), 4),
+                # "similarity_score": round(1-float(row[3]), 4),
                 "labels":row[2]
             })
         cursor.close()
@@ -131,3 +150,45 @@ async def search_similar_manga(request: Request, file: UploadFile=File(...)):
         return {"status": "success", "data": formatted_results}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+# @app.post("/api/search_image")
+# @limiter.limit("5/day")
+# async def search_similar_manga(request: Request, file: UploadFile=File(...)):
+#     if not file.content_type.startswith("image/"):
+#         raise HTTPException(status_code=400, detail="Invalid file type. Only images are allowed.")
+#     try:
+#         image_bytes = await file.read()
+#         image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+        
+#         input_tensor = transform(image).unsqueeze(0).to(device)
+#         with torch.no_grad():
+#             e_sem, e_sey= encoder(input_tensor)
+#         sem_vector =e_sem[0].cpu().numpy().tolist()
+        
+#         #資料庫
+#         conn=psycopg2.connect(host=DB_HOST,database=DB_NAME, user=DB_USER, password=DB_PASS, port=DB_PORT)
+#         register_vector(conn)
+#         cursor=conn.cursor() #生成物件去控制database
+        
+#         search_query = '''
+#             SELECT manga_name, image_path, labels, (semantic_feature <=> %s) AS distance
+#             FROM anime_images
+#             WHERE (semantic_feature <=> %s) > 0.01
+#             ORDER BY distance ASC
+#             LIMIT 5;
+#         '''
+#         # cursor.execute(search_query,(str(sem_vector),))
+#         cursor.execute(search_query, (str(sem_vector), str(sem_vector)))
+#         results=cursor.fetchall()
+#         formatted_results =[] #裝回傳資料用的
+#         for row in results :
+#             formatted_results.append({
+#                 "manga_name": row[0],
+#                 "image_path": row[1],
+#                 "similarity_score": round(1-float(row[3]), 4),
+#                 "labels":row[2]
+#             })
+#         cursor.close()
+#         conn.close()
+#         return {"status": "success", "data": formatted_results}
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
