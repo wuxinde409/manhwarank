@@ -18,6 +18,10 @@ from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+
+from typing import Optional
+from fastapi import Query
+
 load_dotenv()
 DB_HOST = "db"
 DB_NAME = "manhwa"
@@ -89,6 +93,7 @@ transform = transforms.Compose([
     transforms.Normalize(mean=[0.6272, 0.5589, 0.5401], std=[0.3236, 0.3215, 0.3189])
 ])
 #api節點
+
 @app.post("/api/search_image")
 @limiter.limit("5/day")
 async def search_similar_manga(
@@ -150,45 +155,155 @@ async def search_similar_manga(
         return {"status": "success", "data": formatted_results}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
-# @app.post("/api/search_image")
-# @limiter.limit("5/day")
-# async def search_similar_manga(request: Request, file: UploadFile=File(...)):
-#     if not file.content_type.startswith("image/"):
-#         raise HTTPException(status_code=400, detail="Invalid file type. Only images are allowed.")
+@app.get("/api/manga")
+async def get_manga_list(
+    genre: Optional[str] = Query(None, description="漫畫分類"), 
+    page: int = Query(1, ge=1, description="頁碼"),
+    limit: int = Query(100, ge=1, le=100, description="每頁數量")
+):
+    conn = None
+    cursor = None
+    try:
+        conn = psycopg2.connect(host=DB_HOST, database=DB_NAME, user=DB_USER, password=DB_PASS, port=DB_PORT)
+        cursor = conn.cursor()
+        offset=(page-1)*limit
+        where_clause=""
+        params=[]
+        if genre:
+            where_clause=" WHERE (labels::jsonb ->> %s)::float >=0.99"
+            params.append(genre)
+        count_query = f"SELECT COUNT(*) FROM anime_images {where_clause}" #算總數
+        print(f"count_query目前:{count_query}")
+        cursor.execute(count_query,params)
+        actual_sql = cursor.query.decode('utf-8')
+        print(f"真正傳入資料庫的完整 SQL: {actual_sql}")
+        total_count = cursor.fetchone()[0]
+        total_pages = (total_count + limit - 1) // limit if limit > 0 else 1
+        
+        select_query = f"SELECT manga_name, image_path, labels FROM anime_images {where_clause} ORDER BY id ASC LIMIT %s OFFSET %s"
+        cursor.execute(select_query,params+[limit,offset])
+        results = cursor.fetchall()
+        # 封裝回傳陣列
+        formatted_results = [{"manga_name": row[0], "image_path": row[1], "labels": row[2]} for row in results]
+        return {
+            "status": "success", 
+            "data": formatted_results,
+            "pagination": {
+                "current_page": page,
+                "total_pages": total_pages,
+                "total_count": total_count
+            }
+        }
+    except Exception as e:
+        print(f"API 嚴重錯誤: {str(e)}", flush=True)
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if conn is not None:
+            conn.close()    
+    
+# @app.get("/api/manga")
+# async def get_manga_list(
+#     genre: Optional[str] = Query(None, description="漫畫分類"), 
+#     page: int = Query(1, ge=1, description="頁碼"),
+#     limit: int = Query(100, ge=1, le=100, description="每頁數量")
+# ):
+#     GENRE_INDEX = {
+#         "Adventure": 0, "Fantasy": 1, "Historical": 2, "Isekai": 3,
+#         "Mystery": 4, "Romance": 5, "School": 6, "SF": 7,
+#         "sports": 8, "Supernatural": 9
+#     }
+    
+#     conn = None
+#     cursor = None
 #     try:
-#         image_bytes = await file.read()
-#         image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+#         conn = psycopg2.connect(host=DB_HOST, database=DB_NAME, user=DB_USER, password=DB_PASS, port=DB_PORT)
+#         cursor = conn.cursor()
         
-#         input_tensor = transform(image).unsqueeze(0).to(device)
-#         with torch.no_grad():
-#             e_sem, e_sey= encoder(input_tensor)
-#         sem_vector =e_sem[0].cpu().numpy().tolist()
+#         # 直接拿回全部資料
+#         cursor.execute("SELECT manga_name, image_path, labels FROM anime_images ORDER BY id ASC")
+#         all_results = cursor.fetchall()
         
-#         #資料庫
-#         conn=psycopg2.connect(host=DB_HOST,database=DB_NAME, user=DB_USER, password=DB_PASS, port=DB_PORT)
-#         register_vector(conn)
-#         cursor=conn.cursor() #生成物件去控制database
+#         filtered_results = []
         
-#         search_query = '''
-#             SELECT manga_name, image_path, labels, (semantic_feature <=> %s) AS distance
-#             FROM anime_images
-#             WHERE (semantic_feature <=> %s) > 0.01
-#             ORDER BY distance ASC
-#             LIMIT 5;
-#         '''
-#         # cursor.execute(search_query,(str(sem_vector),))
-#         cursor.execute(search_query, (str(sem_vector), str(sem_vector)))
-#         results=cursor.fetchall()
-#         formatted_results =[] #裝回傳資料用的
-#         for row in results :
+#         if genre and genre in GENRE_INDEX:
+#             idx = GENRE_INDEX[genre]
+            
+#             # 加入計數器，只印前 3 筆避免終端機報錯
+#             debug_count = 0 
+            
+#             for row in all_results:
+#                 try:
+#                     labels_data = row[2]
+                    
+#                     # 印出原始資料與型別
+#                     if debug_count < 3:
+#                         print(f"--- 偵測漫畫: {row[0]} ---", flush=True)
+#                         print(f" 原始 labels: {labels_data}", flush=True) #檢查資料庫
+#                         print(f" 原始型別: {type(labels_data)}", flush=True)
+
+#                     if not labels_data:
+#                         continue
+                        
+#                     if isinstance(labels_data, str):
+#                         clean_str = labels_data.strip().replace('{', '[').replace('}', ']')
+#                         if not clean_str.startswith('['):
+#                             clean_str = f"[{clean_str}]"
+#                         labels_list = json.loads(clean_str)
+#                     else:
+#                         labels_list = list(labels_data)
+                    
+#                     # 【印出解析後的陣列
+#                     if debug_count < 3:
+#                         print(f" 解析陣列: {labels_list}", flush=True)
+#                         print(f" 鎖定索引 {idx} 的值: {labels_list[idx] if len(labels_list) > idx else '超出身長'}", flush=True)
+#                         debug_count += 1
+                        
+#                     if len(labels_list) > idx and float(labels_list[idx]) >= 0.99:
+#                         filtered_results.append(row)
+                        
+#                 except Exception as row_error:
+#                     # 【觀測站 3】：印出錯誤
+#                     if debug_count < 5:
+#                         print(f" 解析崩: {row_error} (原始資料: {row[2]})", flush=True)
+#                         debug_count += 1
+#                     continue
+#         else:
+#             filtered_results = all_results
+            
+#         # 記憶體分頁計算
+#         total_count = len(filtered_results)
+#         total_pages = (total_count + limit - 1) // limit if limit > 0 else 1
+#         offset = (page - 1) * limit
+#         page_results = filtered_results[offset : offset + limit]
+        
+#         formatted_results = []
+#         for row in page_results:
 #             formatted_results.append({
 #                 "manga_name": row[0],
 #                 "image_path": row[1],
-#                 "similarity_score": round(1-float(row[3]), 4),
-#                 "labels":row[2]
+#                 "labels": row[2]
 #             })
-#         cursor.close()
-#         conn.close()
-#         return {"status": "success", "data": formatted_results}
+            
+#         return {
+#             "status": "success", 
+#             "data": formatted_results,
+#             "pagination": {
+#                 "current_page": page,
+#                 "total_pages": total_pages,
+#                 "total_count": total_count
+#             }
+#         }
 #     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+#         # 萬一資料庫連線出包，印出強烈警告
+#         print(f"API 嚴重錯誤: {str(e)}", flush=True)
+#         raise HTTPException(status_code=500, detail=str(e))
+#     finally:
+#         # 確保連線安全關閉
+#         if cursor is not None:
+#             cursor.close()
+#         if conn is not None:
+#             conn.close()
+            
+            
