@@ -18,8 +18,8 @@ from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-
-from typing import Optional
+from pydantic import BaseModel
+from typing import Optional, List
 from fastapi import Query
 
 load_dotenv()
@@ -28,6 +28,14 @@ DB_NAME = "manhwa"
 DB_USER = "postgres"
 DB_PASS = os.environ.get("POSTGRES_ROOT_PASSWORD")
 DB_PORT = 5432
+import google.generativeai as genai
+GEMINI_API_KEY=os.environ.get("APIKEY")
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+    gemini_model = genai.GenerativeModel('gemini-2.5-flash')
+else:
+    print("警告: 未設定 GEMINI_API_KEY")
+
 
 limiter= Limiter(key_func=get_remote_address) #實體化limiter,抓ip用的
 app = FastAPI(title="MangaVault AI Engine")
@@ -133,7 +141,7 @@ async def search_similar_manga(
             FROM anime_images
             WHERE (semantic_feature <=> %s) > 0.01
             ORDER BY distance ASC
-            LIMIT 5;
+            LIMIT 4;
         '''
         # cursor.execute(search_query,(str(sem_vector),))
         cursor.execute(search_query, (
@@ -155,6 +163,34 @@ async def search_similar_manga(
         return {"status": "success", "data": formatted_results}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+class MangaTitlesRequest(BaseModel):
+    titles: List[str]
+@app.post("/api/recommend_text")
+@limiter.limit("3/day")
+async def generate_ai_description(request: Request, data: MangaTitlesRequest):
+    if not GEMINI_API_KEY:
+        raise HTTPException(status_code=500, detail="未配置 API Key")
+    
+    titles_str = "、".join(data.titles)
+    # prompt = f"You are an experienced manga expert. Based on the following four manga titles: 【{titles_str}】, please provide a fluent English recommendation of about 100 words for each. Focus on briefly introducing the storyline, as well as the artist’s distinctive visual style, linework, brush techniques, and the overall artistic presentation of the illustrations. Do not use Markdown formatting."
+    prompt = f"""
+    You are an experienced manga expert. Based on the following four manga titles: 【{titles_str}】.
+    Please provide a fluent English recommendation of about 100 words for each. 
+    Format your response strictly as follows:
+    **[Manga Title]**
+    [Briefly introduce the storyline, the artist’s distinctive visual style, linework, brush techniques, and the overall artistic presentation.]
+    
+    Ensure there is an empty line between different manga recommendations.
+    Start directly with [Manga Title] and introduce the manga without any preamble or unnecessary wording. Do not include any explanations or statements about completion.
+    """
+    try:
+        response = gemini_model.generate_content(prompt)
+        return {"status": "success", "data": response.text.strip()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="AI 生成失敗")    
+
+    
+    
 @app.get("/api/manga")
 async def get_manga_list(
     genre: Optional[str] = Query(None, description="漫畫分類"), 

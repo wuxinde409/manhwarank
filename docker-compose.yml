@@ -17,7 +17,7 @@ services:
         - db           # 確保資料庫先啟動，API 伺服器才跟著啟動
       command: >
         /bin/bash -c "
-        pip install fastapi uvicorn python-multipart slowapi psycopg2-binary python-dotenv pgvector && 
+        pip install fastapi uvicorn python-multipart slowapi psycopg2-binary python-dotenv pgvector google-generativeai && 
         uvicorn api:app --host 0.0.0.0 --port 8000 --reload
         " 
       deploy:
