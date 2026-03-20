@@ -47,13 +47,15 @@ origns=[ #新增允許連進來的網頁
     "http://localhost:3000",
     "http://172.20.176.1:3000",
     "http://127.0.0.1:3000",
-    "http://localhost:5173"
+    "http://localhost:5173",
+    "https://approval-taken-appointment-flour.trycloudflare.com",
+    "https://declined-deeper-sterling-tile.trycloudflare.com"
 ]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origns,
     allow_credentials=True,
-    allow_methods=["POST"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
  #使用的model
